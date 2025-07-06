@@ -206,6 +206,15 @@ function screener_dropdown_shortcode() {
             border-radius: 4px;
             margin-bottom: 20px;
         }
+        
+        .debug-info {
+            background: #e7f3ff;
+            color: #0c5460;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 12px;
+        }
     </style>
 
     <script>
@@ -215,10 +224,18 @@ function screener_dropdown_shortcode() {
             let dataTable = null;
             let filterCounter = 0;
             
+            // Debug function
+            function debugLog(message, data = null) {
+                console.log('[Screener Debug]', message, data);
+                $('#screener-app').prepend('<div class="debug-info">' + message + '</div>');
+            }
+            
             // Load data on page load
             loadData();
             
             function loadData() {
+                debugLog('Starting to load data...');
+                
                 // Load screener_list.csv
                 $.ajax({
                     url: '<?php echo plugin_dir_url(__FILE__); ?>data/screener_list.csv',
@@ -226,10 +243,12 @@ function screener_dropdown_shortcode() {
                     dataType: 'text',
                     success: function(data) {
                         screenerList = parseCSV(data);
-                        console.log('Loaded screener list:', screenerList.length, 'items');
+                        debugLog('Loaded screener list:', screenerList.length + ' items');
+                        debugLog('Sample screener list item:', screenerList[0]);
                     },
-                    error: function() {
-                        showError('Failed to load screener list data');
+                    error: function(xhr, status, error) {
+                        debugLog('Failed to load screener list: ' + error);
+                        showError('Failed to load screener list data: ' + error);
                     }
                 });
                 
@@ -240,40 +259,62 @@ function screener_dropdown_shortcode() {
                     dataType: 'text',
                     success: function(data) {
                         screenerData = parseCSV(data);
-                        console.log('Loaded screener data:', screenerData.length, 'items');
+                        debugLog('Loaded screener data:', screenerData.length + ' items');
+                        debugLog('Sample screener data item:', screenerData[0]);
                         initializeDataTable();
                     },
-                    error: function() {
-                        showError('Failed to load screener data');
+                    error: function(xhr, status, error) {
+                        debugLog('Failed to load screener data: ' + error);
+                        showError('Failed to load screener data: ' + error);
                     }
                 });
             }
             
             function parseCSV(csv) {
-                const lines = csv.split('\n');
-                const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
-                const result = [];
-                
-                for (let i = 1; i < lines.length; i++) {
-                    if (lines[i].trim() === '') continue;
+                try {
+                    const lines = csv.split('\n');
+                    if (lines.length < 2) {
+                        debugLog('CSV has insufficient lines:', lines.length);
+                        return [];
+                    }
                     
-                    const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
-                    const obj = {};
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+                    debugLog('CSV headers:', headers);
                     
-                    headers.forEach((header, index) => {
-                        obj[header] = values[index] || '';
-                    });
+                    const result = [];
                     
-                    result.push(obj);
+                    for (let i = 1; i < lines.length; i++) {
+                        if (lines[i].trim() === '') continue;
+                        
+                        const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
+                        const obj = {};
+                        
+                        headers.forEach((header, index) => {
+                            obj[header] = values[index] || '';
+                        });
+                        
+                        result.push(obj);
+                    }
+                    
+                    debugLog('Parsed CSV successfully:', result.length + ' rows');
+                    return result;
+                } catch (error) {
+                    debugLog('Error parsing CSV:', error);
+                    return [];
                 }
-                
-                return result;
             }
             
             function initializeDataTable() {
                 if (dataTable) {
                     dataTable.destroy();
                 }
+                
+                if (!screenerData.length) {
+                    debugLog('No screener data available for DataTable');
+                    return;
+                }
+                
+                debugLog('Initializing DataTable with data:', screenerData.length + ' rows');
                 
                 dataTable = $('#results-table').DataTable({
                     data: screenerData,
@@ -299,11 +340,13 @@ function screener_dropdown_shortcode() {
                 });
                 
                 updateResultsCount();
+                debugLog('DataTable initialized successfully');
             }
             
             function updateResultsCount() {
                 const count = dataTable ? dataTable.data().count() : 0;
                 $('#results-count').text(count + ' stocks found');
+                debugLog('Updated results count:', count);
             }
             
             function showError(message) {
@@ -349,15 +392,25 @@ function screener_dropdown_shortcode() {
                 });
                 
                 // Add event listeners
-                $(`[data-filter-id="${filterCounter}"] .filter-field, [data-filter-id="${filterCounter}"] .filter-operator, [data-filter-id="${filterCounter}"] .filter-value`).on('change keyup', applyFilters);
-                $(`[data-filter-id="${filterCounter}"] .remove-filter`).click(function() {
-                    $(this).closest('.filter-row').remove();
+                $(`[data-filter-id="${filterCounter}"] .filter-field, [data-filter-id="${filterCounter}"] .filter-operator, [data-filter-id="${filterCounter}"] .filter-value`).on('change keyup', function() {
+                    debugLog('Filter changed, applying filters...');
                     applyFilters();
                 });
+                
+                $(`[data-filter-id="${filterCounter}"] .remove-filter`).click(function() {
+                    $(this).closest('.filter-row').remove();
+                    debugLog('Filter removed, applying filters...');
+                    applyFilters();
+                });
+                
+                debugLog('Added filter row:', filterCounter);
             }
             
             function generateFieldOptions() {
-                if (!screenerList.length) return '';
+                if (!screenerList.length) {
+                    debugLog('No screener list available for field options');
+                    return '';
+                }
                 
                 const categories = {};
                 screenerList.forEach(item => {
@@ -376,11 +429,15 @@ function screener_dropdown_shortcode() {
                     options += '</optgroup>';
                 });
                 
+                debugLog('Generated field options for categories:', Object.keys(categories));
                 return options;
             }
             
             function applyFilters() {
-                if (!dataTable || !screenerData.length) return;
+                if (!dataTable || !screenerData.length) {
+                    debugLog('Cannot apply filters: no data table or data');
+                    return;
+                }
                 
                 const filters = [];
                 $('.filter-row').each(function() {
@@ -390,21 +447,28 @@ function screener_dropdown_shortcode() {
                     
                     if (field && operator && value !== '') {
                         filters.push({ field, operator, value });
+                        debugLog('Active filter:', { field, operator, value });
                     }
                 });
+                
+                debugLog('Applying filters:', filters.length + ' filters');
                 
                 if (filters.length === 0) {
                     // No filters, show all data
                     dataTable.clear().rows.add(screenerData).draw();
+                    debugLog('No filters, showing all data');
                 } else {
                     // Apply filters
                     const filteredData = screenerData.filter(row => {
                         return filters.every(filter => {
-                            return applyFilter(row, filter);
+                            const result = applyFilter(row, filter);
+                            debugLog('Filter result for row:', { row: row.Ticker, filter: filter, result: result });
+                            return result;
                         });
                     });
                     
                     dataTable.clear().rows.add(filteredData).draw();
+                    debugLog('Applied filters, showing filtered data:', filteredData.length + ' rows');
                 }
                 
                 updateResultsCount();
@@ -414,34 +478,51 @@ function screener_dropdown_shortcode() {
                 const fieldValue = row[filter.field];
                 const filterValue = filter.value;
                 
+                debugLog('Applying filter:', { field: filter.field, fieldValue: fieldValue, operator: filter.operator, filterValue: filterValue });
+                
                 if (fieldValue === undefined || fieldValue === null || fieldValue === '') {
+                    debugLog('Field value is empty or undefined');
                     return false;
                 }
                 
+                let result = false;
                 switch (filter.operator) {
                     case 'equals':
-                        return fieldValue.toString().toLowerCase() === filterValue.toLowerCase();
+                        result = fieldValue.toString().toLowerCase() === filterValue.toLowerCase();
+                        break;
                     case 'not_equals':
-                        return fieldValue.toString().toLowerCase() !== filterValue.toLowerCase();
+                        result = fieldValue.toString().toLowerCase() !== filterValue.toLowerCase();
+                        break;
                     case 'contains':
-                        return fieldValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+                        result = fieldValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+                        break;
                     case 'not_contains':
-                        return !fieldValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+                        result = !fieldValue.toString().toLowerCase().includes(filterValue.toLowerCase());
+                        break;
                     case 'greater_than':
-                        return parseFloat(fieldValue) > parseFloat(filterValue);
+                        result = parseFloat(fieldValue) > parseFloat(filterValue);
+                        break;
                     case 'less_than':
-                        return parseFloat(fieldValue) < parseFloat(filterValue);
+                        result = parseFloat(fieldValue) < parseFloat(filterValue);
+                        break;
                     case 'greater_equal':
-                        return parseFloat(fieldValue) >= parseFloat(filterValue);
+                        result = parseFloat(fieldValue) >= parseFloat(filterValue);
+                        break;
                     case 'less_equal':
-                        return parseFloat(fieldValue) <= parseFloat(filterValue);
+                        result = parseFloat(fieldValue) <= parseFloat(filterValue);
+                        break;
                     default:
-                        return true;
+                        result = true;
                 }
+                
+                debugLog('Filter result:', result);
+                return result;
             }
             
             // Add initial filter row
-            addFilterRow();
+            setTimeout(function() {
+                addFilterRow();
+            }, 1000); // Delay to ensure data is loaded
         });
     </script>
     <?php
@@ -486,6 +567,9 @@ function screener_dropdown_admin_page() {
                 <li><code>screener_list.csv</code> - Contains field definitions</li>
                 <li><code>screener_data.csv</code> - Contains company data</li>
             </ul>
+            
+            <h3>Debug Information:</h3>
+            <p>The plugin now includes debug information that will appear on the frontend to help troubleshoot any issues.</p>
         </div>
     </div>
     <?php
